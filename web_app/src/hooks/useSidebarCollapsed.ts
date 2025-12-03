@@ -1,34 +1,53 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 
-export function useSidebarCollapsed(): boolean {
-  const [collapsed, setCollapsed] = useState(false);
+type SidebarState = {
+  collapsed: boolean;
+  isLoaded: boolean;
+};
+
+export function useSidebarCollapsed(): SidebarState {
+  const [state, setState] = useState<SidebarState>({
+    collapsed: false,
+    isLoaded: false,
+  });
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    // Load initial state
     try {
       const stored = window.localStorage.getItem("sidebarCollapsed");
-      if (stored === "1") {
-        setCollapsed(true);
-      }
+      setState({
+        collapsed: stored === "1",
+        isLoaded: true,
+      });
     } catch {
-      // ignore
+      setState({
+        collapsed: false,
+        isLoaded: true,
+      });
     }
 
+    // Set up event listener for sidebar changes
     const handler = (event: Event) => {
       const custom = event as CustomEvent<{ collapsed: boolean }>;
       if (custom.detail && typeof custom.detail.collapsed === "boolean") {
-        setCollapsed(custom.detail.collapsed);
+        // Defer state update to avoid updating during render
+        startTransition(() => {
+          setState(prev => ({
+            ...prev,
+            collapsed: custom.detail.collapsed,
+          }));
+        });
       }
     };
 
     window.addEventListener("sidebar-collapse-changed", handler as EventListener);
     return () => window.removeEventListener("sidebar-collapse-changed", handler as EventListener);
-  }, []);
+  }, [startTransition]);
 
-  return collapsed;
+  return state;
 }
-
-
