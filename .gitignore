@@ -1,5 +1,5 @@
 # Ignore all files in the OHCLV Data directory
-Data/OHCLV Data/**
+# Data/OHCLV Data/**  # Commented out to allow tracking OHCLV Data
 
 # Python cache
 __pycache__/
