@@ -35,7 +35,7 @@ INDICATOR_SHEET = "Indicators"
 OHLCV_DB = ROOT / "Data" / "OHCLV Data" / "stocks.duckdb"
 SIGNALS_DB = ROOT / "Data" / "Signals Data" / "signals.duckdb"
 DASH_SHEET = "Update Dash board"
-CONFIG_DB = ROOT / "rubikview_users.db"
+CONFIG_DB = ROOT / "Data" / "rubikview_users.db"
 
 progress_lock = threading.Lock()
 

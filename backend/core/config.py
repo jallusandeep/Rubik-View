@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     # Resolve absolute path to Data directory
     # config.py is in backend/core/ -> up 3 levels to Rubik_view
     BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    DATABASE_URL: str = f"sqlite:///{os.path.join(BASE_DIR, 'rubikview_users.db').replace('\\', '/')}" # For user data
+    DATABASE_URL: str = f"sqlite:///{os.path.join(BASE_DIR, 'Data', 'rubikview_users.db').replace('\\', '/')}" # For user data
     DUCKDB_PATH: str = os.path.join(BASE_DIR, "Data", "OHCLV Data", "stocks.duckdb") # Existing market data
     
     # Security
