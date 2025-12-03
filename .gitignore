@@ -1,6 +1,3 @@
-# Ignore all files in the OHCLV Data directory
-# Data/OHCLV Data/**  # Commented out to allow tracking OHCLV Data
-
 # Python cache
 __pycache__/
 *.py[cod]
@@ -26,14 +23,9 @@ Thumbs.db
 # Logs
 logs/*.log
 
-# Database files (local development)
-*.db
-*.sqlite
-*.sqlite3
-
-# Excel files
-*.xlsm
-*.xlsx
+# Excel files (keep Excel files tracked but ignore large ones in specific folders if needed)
+# *.xlsm
+# *.xlsx
 
 # Jupyter notebooks
 *.ipynb
@@ -41,15 +33,15 @@ logs/*.log
 # Documentation
 *.docx
 
-# Test files
-test*.py
-check*.py
-verify*.py
-examine*.py
-fix*.py
+# Test files (comment out to track test files)
+# test*.py
+# check*.py
+# verify*.py
+# examine*.py
+# fix*.py
 
-# Migration scripts (one-time use)
-migrate*.py
+# Migration scripts (comment out to track migration scripts)
+# migrate*.py
 
 # Node modules
 node_modules/
@@ -61,3 +53,6 @@ dist/
 .env
 .env.local
 .env.*.local
+
+# Note: Database files and OHCLV Data are now tracked in git
+# Large database files may need Git LFS in the future

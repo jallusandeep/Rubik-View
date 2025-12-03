@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RubikLoader } from "@/components/RubikLoader";
 import SimpleSpinner from "@/components/SimpleSpinner";
+import { useAuth } from "@/hooks/useAuth";
 
 type Profile = {
     id: number;
@@ -43,6 +44,7 @@ const initialProfileState: Profile = {
 };
 
 export default function AccountsPage() {
+    const { isLoading: authLoading } = useAuth({ requireAuth: true });
     const [profile, setProfile] = useState<Profile>(initialProfileState);
     const [profileForm, setProfileForm] = useState({
         full_name: "",
@@ -218,6 +220,14 @@ export default function AccountsPage() {
         );
     }
 
+    if (authLoading) {
+        return (
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+                <SimpleSpinner size={32} />
+            </div>
+        );
+    }
+
     return (
         <div className="min-h-screen bg-slate-900 text-white p-8"
         >
@@ -258,10 +268,9 @@ export default function AccountsPage() {
                                 Request Change
                             </Button>
                             <Button
-                                onClick={() => {
-                                    localStorage.removeItem("token");
-                                    localStorage.removeItem("role");
-                                    window.location.href = "/";
+                                onClick={async () => {
+                                    const { logout } = await import("@/lib/auth");
+                                    logout();
                                 }}
                                 variant="secondary"
                                 className="bg-slate-800 hover:bg-slate-700 text-slate-200 w-full md:w-48 flex items-center justify-center gap-2"

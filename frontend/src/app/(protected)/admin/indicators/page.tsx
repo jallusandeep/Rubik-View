@@ -9,6 +9,7 @@ import { Check, Edit3, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RubikLoader } from "@/components/RubikLoader";
 import SimpleSpinner from "@/components/SimpleSpinner";
+import { useAuth } from "@/hooks/useAuth";
 
 type IndicatorConfig = {
   id: number;
@@ -38,14 +39,18 @@ export default function IndicatorAdminPage() {
   const [message, setMessage] = useState<MessageState>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
+  const { isLoading: authLoading, isValid } = useAuth({ requireAuth: true, requireAdmin: true });
+
   useEffect(() => {
-    const role = localStorage.getItem("role");
-    if (role !== "admin" && role !== "superadmin") {
+    if (authLoading) {
+      return;
+    }
+    if (!isValid) {
       router.push("/dashboard");
     } else {
       setAccessLoading(false);
     }
-  }, [router]);
+  }, [authLoading, isValid, router]);
 
   const loadIndicators = async () => {
     setLoading(true);

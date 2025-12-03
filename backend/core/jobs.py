@@ -110,9 +110,33 @@ def _execute_job(job_id: int, script_path: str, job_type: str) -> None:
         PROCESS_MAP.pop(job_id, None)
         job = session.get(models.AdminJob, job_id)
         if job:
-            # If the job has been explicitly stopped, don't overwrite its status
-            if job.status == "running":
-                job.status = "completed" if return_code == 0 else "failed"
+            # Refresh job to get latest status from database (might have been stopped while running)
+            session.refresh(job)
+            
+            # If job status is already "stopped", don't change it
+            if job.status == "stopped":
+                # Just update return code and finished_at if needed
+                try:
+                    details = json.loads(job.details) if job.details else {}
+                except Exception:
+                    details = {}
+                details["returncode"] = return_code
+                if not job.finished_at:
+                    job.finished_at = datetime.utcnow()
+                job.details = json.dumps(details)
+                session.add(job)
+                session.commit()
+            elif job.status == "running":
+                # Check if job was stopped by looking at details (fallback check)
+                try:
+                    details = json.loads(job.details) if job.details else {}
+                    if details.get("stopped"):
+                        job.status = "stopped"
+                    else:
+                        job.status = "completed" if return_code == 0 else "failed"
+                except Exception:
+                    # If details parsing fails, use return code
+                    job.status = "completed" if return_code == 0 else "failed"
                 job.finished_at = datetime.utcnow()
                 # Preserve any existing details (like pid) and append return code
                 try:
@@ -127,10 +151,25 @@ def _execute_job(job_id: int, script_path: str, job_type: str) -> None:
         logger.exception("Job %s failed to execute: %s", job_type, exc)
         job = session.get(models.AdminJob, job_id)
         if job:
+            # Refresh to get latest status (might have been stopped)
+            session.refresh(job)
             if job.status == "running":
-                job.status = "failed"
+                # Check if job was stopped before marking as failed
+                try:
+                    details = json.loads(job.details) if job.details else {}
+                    if details.get("stopped"):
+                        job.status = "stopped"
+                    else:
+                        job.status = "failed"
+                except Exception:
+                    job.status = "failed"
                 job.finished_at = datetime.utcnow()
-                job.details = json.dumps({"error": str(exc)})
+                try:
+                    details = json.loads(job.details) if job.details else {}
+                except Exception:
+                    details = {}
+                details["error"] = str(exc)
+                job.details = json.dumps(details)
                 session.add(job)
                 session.commit()
     finally:
@@ -174,6 +213,18 @@ def stop_job(db: Session, job_id: int) -> models.AdminJob:
     except Exception:
         pid = None
 
+    # CRITICAL: Mark job as stopped IMMEDIATELY in database BEFORE terminating process
+    # This prevents race condition where _execute_job might finish first and set status to "failed"
+    job.status = "stopped"
+    try:
+        details = json.loads(job.details) if job.details else {}
+    except Exception:
+        details = {}
+    details["stopped"] = True
+    job.details = json.dumps(details)
+    db.add(job)
+    db.commit()
+
     return_code = None
     try:
         if proc:
@@ -197,17 +248,18 @@ def stop_job(db: Session, job_id: int) -> models.AdminJob:
             raise RuntimeError("Job process handle not available")
     finally:
         PROCESS_MAP.pop(job_id, None)
-
-    job.status = "stopped"
-    job.finished_at = datetime.utcnow()
-    try:
-        details = json.loads(job.details) if job.details else {}
-    except Exception:
-        details = {}
-    details.update({"stopped": True, "returncode": return_code})
-    job.details = json.dumps(details)
-    db.add(job)
-    db.commit()
+        # Update return code and finished_at if we got one
+        if return_code is not None:
+            try:
+                details = json.loads(job.details) if job.details else {}
+            except Exception:
+                details = {}
+            details["returncode"] = return_code
+            job.details = json.dumps(details)
+            job.finished_at = datetime.utcnow()
+            db.add(job)
+            db.commit()
+    
     db.refresh(job)
     return job
 
@@ -222,8 +274,9 @@ def force_mark_stopped(db: Session, job_id: int) -> models.AdminJob:
     if not job:
         raise ValueError("Job not found")
 
-    # If the job is already in a terminal state, just return it as-is
-    if job.status in {"completed", "failed", "stopped"}:
+    # If the job is already stopped or completed, just return it as-is
+    # Allow force-stop even if failed (to override failed status)
+    if job.status in {"completed", "stopped"}:
         return job
 
     job.status = "stopped"

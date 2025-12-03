@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import api from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
+import SimpleSpinner from "@/components/SimpleSpinner";
 import {
     TrendingUp,
     TrendingDown,
@@ -75,6 +77,7 @@ const ExcelGrid = ({ data }: { data: StockPick[] }) => {
 };
 
 export default function DashboardPage() {
+    const { isLoading: authLoading } = useAuth({ requireAuth: true });
     const [picks, setPicks] = useState<StockPick[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -104,6 +107,14 @@ export default function DashboardPage() {
         const lastUpdated = new Date().toLocaleString();
         return { bullish, bearish, neutral, topScore, lastUpdated };
     }, [picks]);
+
+    if (authLoading) {
+        return (
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+                <SimpleSpinner size={32} />
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-slate-900 text-white p-8 space-y-8">

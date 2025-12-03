@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
 import {
     MessageSquarePlus,
     Lightbulb,
@@ -58,14 +59,13 @@ export default function FeedbackPage() {
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
 
+    const { isLoading: authLoading } = useAuth({ requireAuth: true });
+
     useEffect(() => {
-        const token = localStorage.getItem("token");
-        if (!token) {
-            router.push("/");
-            return;
+        if (!authLoading) {
+            fetchFeedback();
         }
-        fetchFeedback();
-    }, [router]);
+    }, [authLoading]);
 
     const fetchFeedback = async () => {
         setLoading(true);
@@ -109,10 +109,10 @@ export default function FeedbackPage() {
         }
     };
 
-    if (loading) {
+    if (authLoading || loading) {
         return (
             <div className="flex h-screen items-center justify-center bg-slate-900 text-white">
-                <RubikLoader label="Loading feedback..." />
+                <RubikLoader label={authLoading ? "Verifying authentication..." : "Loading feedback..."} />
             </div>
         );
     }

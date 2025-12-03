@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import api from "@/lib/api";
 import StockChart from "@/components/Chart";
 import { RubikLoader } from "@/components/RubikLoader";
+import { useAuth } from "@/hooks/useAuth";
+import SimpleSpinner from "@/components/SimpleSpinner";
 
 interface HistoryItem {
     date: string;
@@ -16,6 +18,7 @@ interface HistoryItem {
 }
 
 export default function StockDetailPage() {
+    const { isLoading: authLoading } = useAuth({ requireAuth: true });
     const params = useParams();
     const symbol = params.symbol as string;
     const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -37,6 +40,14 @@ export default function StockDetailPage() {
             fetchHistory();
         }
     }, [symbol]);
+
+    if (authLoading) {
+        return (
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+                <SimpleSpinner size={32} />
+            </div>
+        );
+    }
 
     if (loading) {
         return (

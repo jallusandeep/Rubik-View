@@ -3,12 +3,15 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import api from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
+import SimpleSpinner from "@/components/SimpleSpinner";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Search } from "lucide-react";
 import { RubikLoader } from "@/components/RubikLoader";
 
 export default function StocksPage() {
+    const { isLoading: authLoading } = useAuth({ requireAuth: true });
     const [stocks, setStocks] = useState<string[]>([]);
     const [filteredStocks, setFilteredStocks] = useState<string[]>([]);
     const [search, setSearch] = useState("");
@@ -36,6 +39,14 @@ export default function StocksPage() {
         );
         setFilteredStocks(filtered);
     }, [search, stocks]);
+
+    if (authLoading) {
+        return (
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+                <SimpleSpinner size={32} />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">

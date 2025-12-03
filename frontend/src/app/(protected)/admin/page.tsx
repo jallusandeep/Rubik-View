@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { RubikLoader } from "@/components/RubikLoader";
 import SimpleSpinner from "@/components/SimpleSpinner";
+import { useAuth } from "@/hooks/useAuth";
 import { Input } from "@/components/ui/input";
 
 type UserRecord = {
@@ -98,10 +99,11 @@ const jobMeta = {
 
 const SUPER_ADMIN_EMAIL = "jallusandeep@rubikview.com";
 
-type AdminTab = "processors" | "accounts" | "feedback" | "connections" | "logs";
+type AdminTab = "processors" | "symbols" | "accounts" | "feedback" | "connections" | "logs";
 
 const adminTabs: { key: AdminTab; label: string; description: string; icon: typeof Cpu }[] = [
     { key: "processors", label: "Processors", description: "OHCLV & Signals Management", icon: Cpu },
+    { key: "symbols", label: "Symbols", description: "Stock symbols management", icon: Activity },
     { key: "connections", label: "Connections", description: "External integrations & APIs", icon: Link2 },
     { key: "logs", label: "Logs", description: "System, User & Job Logs", icon: Terminal },
     { key: "accounts", label: "Accounts", description: "User management & requests", icon: Users },
@@ -175,6 +177,8 @@ export default function AdminPage() {
     };
     const [feedbackList, setFeedbackList] = useState<FeedbackItem[]>([]);
     const [updatingFeedbackId, setUpdatingFeedbackId] = useState<number | null>(null);
+    const [symbols, setSymbols] = useState<string[]>([]);
+    const [symbolsLoading, setSymbolsLoading] = useState(true);
 
     // Removed job filter state – logs will be shown via the log panel
     const [jobsLoading, setJobsLoading] = useState(false);
@@ -239,14 +243,18 @@ export default function AdminPage() {
     const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
     const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
 
+    const { isLoading: authLoading, isValid } = useAuth({ requireAuth: true, requireAdmin: true });
+
     useEffect(() => {
-        const role = localStorage.getItem("role");
-        if (role !== "admin" && role !== "superadmin") {
+        if (authLoading) {
+            return;
+        }
+        if (!isValid) {
             router.push("/dashboard");
         } else {
             setAccessLoading(false);
         }
-    }, [router]);
+    }, [authLoading, isValid, router]);
 
     const fetchUsers = async () => {
         try {
@@ -446,6 +454,18 @@ export default function AdminPage() {
         }
     };
 
+    const fetchSymbols = async () => {
+        setSymbolsLoading(true);
+        try {
+            const response = await api.get("/stocks/");
+            setSymbols(response.data);
+        } catch (error) {
+            console.error("Failed to load symbols", error);
+        } finally {
+            setSymbolsLoading(false);
+        }
+    };
+
     const handleUpdateFeedbackStatus = async (feedbackId: number, newStatus: string) => {
         setUpdatingFeedbackId(feedbackId);
         try {
@@ -467,6 +487,7 @@ export default function AdminPage() {
         fetchChangeRequests();
         fetchFeedback();
         fetchSchedules();
+        fetchSymbols();
         const interval = setInterval(() => {
             fetchJobs();
             fetchOhlcvStatus();
@@ -515,19 +536,14 @@ export default function AdminPage() {
 
     const handleTriggerJob = async (type: AdminJob["job_type"]) => {
         setJobAction(type);
-        setJobMessage(null);
         try {
             await api.post(`/admin/jobs/${type}`);
-            setJobMessage({ type: "success", text: `${jobMeta[type].title} started.` });
             fetchJobs();
             fetchOhlcvStatus();
             fetchSignalStatus();
         } catch (error: unknown) {
-            const err = error as { response?: { data?: { detail?: string } } };
-            setJobMessage({
-                type: "error",
-                text: err.response?.data?.detail ?? "Unable to start job.",
-            });
+            // Error will be reflected in status on the card
+            console.error("Failed to start job:", error);
         } finally {
             setJobAction(null);
         }
@@ -535,19 +551,14 @@ export default function AdminPage() {
 
     const handleStopJob = async (jobId: number) => {
         setStoppingJobId(jobId);
-        setJobMessage(null);
         try {
             await api.post(`/admin/jobs/${jobId}/stop`);
-            setJobMessage({ type: "success", text: "Job stop requested." });
             fetchJobs();
             fetchOhlcvStatus();
             fetchSignalStatus();
         } catch (error: unknown) {
-            const err = error as { response?: { data?: { detail?: string } } };
-            setJobMessage({
-                type: "error",
-                text: err.response?.data?.detail ?? "Unable to stop job.",
-            });
+            // Error will be reflected in status on the card
+            console.error("Failed to stop job:", error);
         } finally {
             setStoppingJobId(null);
         }
@@ -555,19 +566,14 @@ export default function AdminPage() {
 
     const handleForceStopJob = async (jobId: number) => {
         setForcingJobId(jobId);
-        setJobMessage(null);
         try {
             await api.post(`/admin/jobs/${jobId}/force-stop`);
-            setJobMessage({ type: "success", text: "Job force-stopped." });
             fetchJobs();
             fetchOhlcvStatus();
             fetchSignalStatus();
         } catch (error: unknown) {
-            const err = error as { response?: { data?: { detail?: string } } };
-            setJobMessage({
-                type: "error",
-                text: err.response?.data?.detail ?? "Unable to force stop job.",
-            });
+            // Error will be reflected in status on the card
+            console.error("Failed to force stop job:", error);
         } finally {
             setForcingJobId(null);
         }
@@ -709,9 +715,11 @@ export default function AdminPage() {
                                         ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
                                         : ohlcvStatus.status === "running"
                                             ? "bg-sky-500/15 text-sky-200 border border-sky-500/30"
-                                            : ohlcvStatus.status === "failed"
-                                                ? "bg-rose-500/15 text-rose-200 border border-rose-500/30"
-                                                : "bg-slate-800 text-slate-300 border border-slate-700"
+                                            : ohlcvStatus.status === "stopped"
+                                                ? "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                                                : ohlcvStatus.status === "failed"
+                                                    ? "bg-rose-500/15 text-rose-200 border border-rose-500/30"
+                                                    : "bg-slate-800 text-slate-300 border border-slate-700"
                                 )}
                             >
                                 {ohlcvStatus.status.toUpperCase()}
@@ -929,9 +937,11 @@ export default function AdminPage() {
                                         ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
                                         : signalStatus.status === "running"
                                             ? "bg-sky-500/15 text-sky-200 border border-sky-500/30"
-                                            : signalStatus.status === "failed"
-                                                ? "bg-rose-500/15 text-rose-200 border border-rose-500/30"
-                                                : "bg-slate-800 text-slate-300 border border-slate-700"
+                                            : signalStatus.status === "stopped"
+                                                ? "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                                                : signalStatus.status === "failed"
+                                                    ? "bg-rose-500/15 text-rose-200 border border-rose-500/30"
+                                                    : "bg-slate-800 text-slate-300 border border-slate-700"
                                 )}
                             >
                                 {signalStatus.status.toUpperCase()}
@@ -1027,18 +1037,7 @@ export default function AdminPage() {
             </section>
 
             {/* Job Message */}
-            {jobMessage && (
-                <div
-                    className={cn(
-                        "rounded-xl border px-4 py-3 text-sm",
-                        jobMessage.type === "success"
-                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                            : "border-rose-500/30 bg-rose-500/10 text-rose-200"
-                    )}
-                >
-                    {jobMessage.text}
-                </div>
-            )}
+            {/* Job Message - Removed as status is shown on cards */}
 
         </div>
     );
@@ -1559,6 +1558,60 @@ export default function AdminPage() {
     // ─────────────────────────────────────────────────────────────────────────────
     // RENDER: Feedback Tab Content
     // ─────────────────────────────────────────────────────────────────────────────
+    const renderSymbolsTab = () => (
+        <div className="space-y-6">
+            <div className="glass-panel rounded-xl border border-slate-800 p-6">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                        <Activity className="h-5 w-5 text-sky-300" />
+                        <div>
+                            <h3 className="text-lg font-semibold">Stock Symbols</h3>
+                            <p className="text-xs text-slate-500">All available stock symbols from OHCLV database.</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500">Total: <span className="font-semibold text-slate-300">{symbols.length}</span></span>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            className="bg-slate-800 hover:bg-slate-700"
+                            onClick={fetchSymbols}
+                            disabled={symbolsLoading}
+                        >
+                            {symbolsLoading ? <SimpleSpinner size={16} /> : <RefreshCw className="h-4 w-4" />}
+                        </Button>
+                    </div>
+                </div>
+
+                {symbolsLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                        <RubikLoader label="Loading symbols..." />
+                    </div>
+                ) : symbols.length === 0 ? (
+                    <div className="text-center py-12 text-slate-500">
+                        <Activity className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                        <p>No symbols found. Run OHCLV data loader to populate symbols.</p>
+                    </div>
+                ) : (
+                    <div className="overflow-auto max-h-[600px]">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+                            {symbols.map((symbol) => (
+                                <div
+                                    key={symbol}
+                                    className="bg-slate-900/50 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-slate-300 hover:bg-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
+                                    onClick={() => router.push(`/dashboard/stocks/${encodeURIComponent(symbol)}`)}
+                                    title={`View ${symbol} details`}
+                                >
+                                    {symbol}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+
     const renderFeedbackTab = () => (
         <div className="space-y-6">
             <section className="glass-panel rounded-xl border border-slate-800 p-4 space-y-3">
@@ -1669,6 +1722,7 @@ export default function AdminPage() {
                     </div>
 
                     {activeTab === "processors" && renderProcessorsTab()}
+                    {activeTab === "symbols" && renderSymbolsTab()}
                     {activeTab === "logs" && renderLogsTab()}
                     {activeTab === "accounts" && renderAccountsTab()}
                     {activeTab === "feedback" && renderFeedbackTab()}

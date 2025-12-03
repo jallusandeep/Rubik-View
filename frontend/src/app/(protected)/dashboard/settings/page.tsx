@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Shield, SlidersHorizontal } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import SimpleSpinner from "@/components/SimpleSpinner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { IndicatorsPanel } from "@/components/IndicatorsPanel";
@@ -9,16 +11,18 @@ import { IndicatorsPanel } from "@/components/IndicatorsPanel";
 type TabId = "general" | "indicators";
 
 export default function SettingsPage() {
+  const { isLoading: authLoading, isAdmin: userIsAdmin } = useAuth({ requireAuth: true });
   const [activeTab, setActiveTab] = useState<TabId>("general");
-  const [role, setRole] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setRole(localStorage.getItem("role"));
-    }
-  }, []);
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <SimpleSpinner size={32} />
+      </div>
+    );
+  }
 
-  const isAdmin = role === "admin" || role === "superadmin";
+  const isAdmin = userIsAdmin;
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-8"

@@ -68,7 +68,7 @@ def init_db():
     conn.close()
 
 def load_symbols():
-    SYMBOLS_DB = Path(r"C:\Users\jallu\OneDrive\pgp\Python\Stock predictor\Rubik_view\Data\Symbols Data\symbols.duckdb")
+    SYMBOLS_DB = PROJECT_ROOT / "Data" / "Symbols Data" / "symbols.duckdb"
     conn = duckdb.connect(str(SYMBOLS_DB))
     # Fetch cleaned symbols for NSE and BSE from the cleaned master table
     nse = conn.execute("SELECT DISTINCT SYMBOL FROM NSE_Master_Cleaned WHERE SYMBOL IS NOT NULL").fetchdf()
