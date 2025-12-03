@@ -68,8 +68,7 @@ npm run dev
 
 1. Open your browser: **http://localhost:3000**
 2. Login with:
-   - **Email:** `jallusandeep@rubikview.com`
-   - **Password:** `8686504620SAn@#1`
+
 
 ### Verify Servers are Running
 
