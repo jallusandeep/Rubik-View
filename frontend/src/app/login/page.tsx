@@ -34,6 +34,8 @@ export default function LoginPage() {
 
       localStorage.setItem("token", response.data.access_token);
       localStorage.setItem("role", response.data.role);
+
+      document.cookie = `token=${response.data.access_token}; path=/;`;
       router.push("/dashboard");
     } catch (err) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

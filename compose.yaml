@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fastapi-backend
+    ports:
+      - "8000:8000"
+    environment:
+      ENV: "DEV"
+    volumes:
+      - ./backend:/app          # bind mount for live changes
+    command: uvicorn main:app --host 0.0.0.0 --reload
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nextjs-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      ENV: "DEV"
+    volumes:
+      - ./frontend:/app         # bind mount for live changes
+      - /app/node_modules       # prevent overwriting node_modules
+    command: npm run dev
+    restart: unless-stopped
