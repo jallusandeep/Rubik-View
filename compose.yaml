@@ -1,0 +1,12 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fastapi-backend
+    ports:
+      - "8000: 8000"
+    environment:
+    volumes:
+      - ./app
+    restart: unless-stopped
