@@ -86,32 +86,32 @@ const Sidebar = () => {
         return pathname === link.href || pathname.startsWith(link.href + "/");
     };
 
-    const sidebarWidth = collapsed ? 68 : 224;
+    const sidebarWidth = collapsed ? 64 : 200;
 
     return (
         <aside
-            className="flex h-screen flex-col border-r border-slate-800/50 bg-slate-950/95 backdrop-blur-xl fixed left-0 top-0 z-50 py-4"
+            className="flex h-screen flex-col border-r border-slate-800/50 bg-slate-950/95 backdrop-blur-xl fixed left-0 top-0 z-50 py-2"
             style={{
                 width: sidebarWidth,
-                paddingLeft: collapsed ? 8 : 12,
-                paddingRight: collapsed ? 8 : 12,
+                paddingLeft: collapsed ? 6 : 10,
+                paddingRight: collapsed ? 6 : 10,
             }}
         >
             {/* Logo Section */}
-            <div className="flex items-center justify-center mb-2 px-1">
-                <Link href="/dashboard" className="flex items-center gap-2 group">
-                    <RubikCube size={collapsed ? 30 : 34} />
+            <div className="flex items-center justify-center mb-1 px-1">
+                <Link href="/dashboard" className="flex items-center gap-1.5 group">
+                    <RubikCube size={collapsed ? 28 : 32} />
                     {!collapsed && (
                         <div className="leading-tight overflow-hidden">
-                            <p className="text-[9px] uppercase tracking-[0.3em] text-slate-500">Rubik</p>
-                            <p className="text-sm font-bold text-white group-hover:text-sky-300 transition-colors">View</p>
+                            <p className="text-[8px] uppercase tracking-[0.2em] text-slate-500">Rubik</p>
+                            <p className="text-xs font-bold text-white group-hover:text-sky-300 transition-colors">View</p>
                         </div>
                     )}
                 </Link>
             </div>
 
             {/* Collapse Toggle Button - Always below logo */}
-            <div className="flex justify-center mb-4">
+            <div className="flex justify-center mb-2">
                 <button
                     onClick={toggleCollapse}
                     className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-slate-800/60 transition-colors"
@@ -135,15 +135,15 @@ const Sidebar = () => {
                             key={link.href}
                             href={link.href}
                             className={cn(
-                                "flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13px] font-medium transition-colors duration-150",
+                                "flex items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors duration-150",
                                 isActive
                                     ? "bg-sky-500/15 text-sky-100 border border-sky-500/30"
                                     : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-100 border border-transparent",
-                                collapsed && "justify-center px-2"
+                                collapsed && "justify-center px-1.5"
                             )}
                             title={collapsed ? link.label : undefined}
                         >
-                            <Icon className={cn("h-[18px] w-[18px] flex-shrink-0", isActive ? "text-sky-300" : "text-slate-500")} />
+                            <Icon className={cn("h-[16px] w-[16px] flex-shrink-0", isActive ? "text-sky-300" : "text-slate-500")} />
                             {!collapsed && <span className="truncate">{link.label}</span>}
                         </Link>
                     );
@@ -151,7 +151,7 @@ const Sidebar = () => {
             </nav>
 
             {/* Sign Out */}
-            <div className="mt-auto pt-3 border-t border-slate-800/50">
+            <div className="mt-auto pt-2 border-t border-slate-800/50">
                 <button
                     onClick={() => {
                         localStorage.removeItem("token");
@@ -159,12 +159,12 @@ const Sidebar = () => {
                         window.location.href = "/";
                     }}
                     className={cn(
-                        "flex w-full items-center gap-2.5 rounded-xl border border-slate-800/40 px-2.5 py-2 text-[13px] font-medium text-slate-400 transition-all hover:bg-rose-500/10 hover:border-rose-500/40 hover:text-rose-300",
-                        collapsed && "justify-center px-2"
+                        "flex w-full items-center gap-2 rounded-lg border border-slate-800/40 px-2 py-1.5 text-[12px] font-medium text-slate-400 transition-all hover:bg-rose-500/10 hover:border-rose-500/40 hover:text-rose-300",
+                        collapsed && "justify-center px-1.5"
                     )}
                     title={collapsed ? "Sign Out" : undefined}
                 >
-                    <LogOut className="h-[18px] w-[18px] flex-shrink-0" />
+                    <LogOut className="h-[16px] w-[16px] flex-shrink-0" />
                     {!collapsed && <span>Sign Out</span>}
                 </button>
             </div>

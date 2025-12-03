@@ -39,7 +39,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             <Sidebar />
             <main
                 style={{
-                    marginLeft: collapsed ? 68 : 224,
+                    marginLeft: collapsed ? 64 : 200,
                 }}
                 className="min-h-screen"
             >

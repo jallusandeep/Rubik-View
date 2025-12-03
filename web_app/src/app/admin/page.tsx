@@ -24,6 +24,8 @@ import {
     Link2,
     Clock,
     Edit,
+    Filter,
+    Search,
 } from "lucide-react";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -96,12 +98,12 @@ const jobMeta = {
 
 const SUPER_ADMIN_EMAIL = "jallusandeep@rubikview.com";
 
-type AdminTab = "processors" | "accounts" | "feedback" | "connections" | "job_monitor";
+type AdminTab = "processors" | "accounts" | "feedback" | "connections" | "logs";
 
 const adminTabs: { key: AdminTab; label: string; description: string; icon: typeof Cpu }[] = [
     { key: "processors", label: "Processors", description: "OHCLV & Signals Management", icon: Cpu },
     { key: "connections", label: "Connections", description: "External integrations & APIs", icon: Link2 },
-    { key: "job_monitor", label: "Job Monitor", description: "Background Job Logs & Status", icon: Activity },
+    { key: "logs", label: "Logs", description: "System, User & Job Logs", icon: Terminal },
     { key: "accounts", label: "Accounts", description: "User management & requests", icon: Users },
     { key: "feedback", label: "Feedback & Requests", description: "User feedback submissions", icon: MessageSquarePlus },
 ];
@@ -173,15 +175,7 @@ export default function AdminPage() {
     const [feedbackList, setFeedbackList] = useState<FeedbackItem[]>([]);
     const [updatingFeedbackId, setUpdatingFeedbackId] = useState<number | null>(null);
 
-    // Job Filters
-    const [jobFilters, setJobFilters] = useState({
-        job_id: "",
-        job_type: "",
-        status: "",
-        triggered_by: "",
-        start_date: "",
-        end_date: "",
-    });
+    // Removed job filter state – logs will be shown via the log panel
     const [jobsLoading, setJobsLoading] = useState(false);
 
     // Job Schedules
@@ -233,6 +227,17 @@ export default function AdminPage() {
         telegram_chat_id: "",
     });
 
+    // Logs tab state - moved to top level to fix hooks error
+    const [activeLogTab, setActiveLogTab] = useState<"job_monitor" | "user_logs" | "system_logs">("job_monitor");
+    const [showQueryModal, setShowQueryModal] = useState(false);
+    const [queryForm, setQueryForm] = useState({
+        columns: [] as string[],
+        startDate: "",
+        endDate: "",
+    });
+    const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+    const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
+
     useEffect(() => {
         const role = localStorage.getItem("role");
         if (role !== "admin" && role !== "superadmin") {
@@ -254,15 +259,8 @@ export default function AdminPage() {
     const fetchJobs = async () => {
         setJobsLoading(true);
         try {
-            const params = new URLSearchParams();
-            if (jobFilters.job_id) params.append("job_id", jobFilters.job_id);
-            if (jobFilters.job_type) params.append("job_type", jobFilters.job_type);
-            if (jobFilters.status) params.append("status", jobFilters.status);
-            if (jobFilters.triggered_by) params.append("triggered_by", jobFilters.triggered_by);
-            if (jobFilters.start_date) params.append("started_after", jobFilters.start_date);
-            if (jobFilters.end_date) params.append("started_before", jobFilters.end_date);
-
-            const response = await api.get(`/admin/jobs?${params.toString()}`);
+            // Fetch all jobs without filters
+            const response = await api.get(`/admin/jobs`);
             setJobs(response.data);
         } catch (error) {
             console.error("Failed to load jobs", error);
@@ -271,20 +269,9 @@ export default function AdminPage() {
         }
     };
 
-    const handleJobFilterChange = (key: string, value: string) => {
-        setJobFilters((prev) => ({ ...prev, [key]: value }));
-    };
+    // Removed filter change handler – not needed after filter UI removal
 
-    const handleResetJobFilters = () => {
-        setJobFilters({
-            job_id: "",
-            job_type: "",
-            status: "",
-            triggered_by: "",
-            start_date: "",
-            end_date: "",
-        });
-    };
+    // Removed reset filter handler
 
     const fetchSchedules = async () => {
         try {
@@ -298,7 +285,7 @@ export default function AdminPage() {
     const handleCreateSchedule = async () => {
         try {
             let scheduleValue: any = {};
-            
+
             if (scheduleForm.schedule_type === "daily") {
                 // Validate daily schedule
                 if (scheduleForm.hour < 0 || scheduleForm.hour > 23) {
@@ -345,8 +332,8 @@ export default function AdminPage() {
             } else if (scheduleForm.schedule_type === "once") {
                 scheduleValue = { start_date: scheduleForm.start_date, start_time: scheduleForm.start_time };
             } else if (scheduleForm.schedule_type === "date_range") {
-                scheduleValue = { 
-                    start_date: scheduleForm.start_date, 
+                scheduleValue = {
+                    start_date: scheduleForm.start_date,
                     start_time: scheduleForm.start_time,
                     end_date: scheduleForm.end_date,
                     end_time: scheduleForm.end_time,
@@ -488,12 +475,7 @@ export default function AdminPage() {
         return () => clearInterval(interval);
     }, [accessLoading]);
 
-    // Auto-query when filters change
-    useEffect(() => {
-        if (!accessLoading) {
-            fetchJobs();
-        }
-    }, [jobFilters]);
+
 
     // Handle Escape key for schedule modal
     useEffect(() => {
@@ -517,6 +499,18 @@ export default function AdminPage() {
         });
         return map;
     }, [jobs]);
+
+    // Filter jobs based on column filters - must be after all useState and useEffect hooks
+    const filteredJobs = useMemo(() => {
+        return jobs.filter(job => {
+            for (const [key, value] of Object.entries(columnFilters)) {
+                if (!value) continue;
+                const jobValue = String((job as any)[key] || "").toLowerCase();
+                if (!jobValue.includes(value.toLowerCase())) return false;
+            }
+            return true;
+        });
+    }, [jobs, columnFilters]);
 
     const handleTriggerJob = async (type: AdminJob["job_type"]) => {
         setJobAction(type);
@@ -697,7 +691,7 @@ export default function AdminPage() {
             {/* OHCLV and Signal Cards */}
             <section className="grid gap-6 lg:grid-cols-2">
                 {/* OHCLV Card */}
-                <div className="glass-panel rounded-2xl border border-slate-800 p-6 space-y-4">
+                <div className="glass-panel rounded-xl border border-slate-800 p-4 space-y-3">
                     <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                             <Database className="h-5 w-5 text-sky-300" />
@@ -866,7 +860,7 @@ export default function AdminPage() {
                                                 </span>
                                                 <span className={cn(
                                                     "px-1.5 py-0.5 rounded text-[10px] font-semibold",
-                                                    schedule.is_active 
+                                                    schedule.is_active
                                                         ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                                                         : "bg-slate-700/50 text-slate-500 border border-slate-700"
                                                 )}>
@@ -917,7 +911,7 @@ export default function AdminPage() {
                 </div>
 
                 {/* Signal Processing Card */}
-                <div className="glass-panel rounded-2xl border border-slate-800 p-6 space-y-4">
+                <div className="glass-panel rounded-xl border border-slate-800 p-4 space-y-3">
                     <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                             <Activity className="h-5 w-5 text-emerald-300" />
@@ -1055,7 +1049,7 @@ export default function AdminPage() {
         <div className="space-y-6">
             <section className="grid gap-6 lg:grid-cols-[2fr_1fr]">
                 {/* Users Table */}
-                <div className="glass-panel rounded-2xl border border-slate-800 p-6 space-y-4">
+                <div className="glass-panel rounded-xl border border-slate-800 p-4 space-y-3">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <Users className="h-5 w-5 text-sky-400" />
@@ -1152,7 +1146,7 @@ export default function AdminPage() {
                 </div>
 
                 {/* Change Requests */}
-                <div className="glass-panel rounded-2xl border border-slate-800 p-6 space-y-4">
+                <div className="glass-panel rounded-xl border border-slate-800 p-4 space-y-3">
                     <div className="flex items-center gap-2">
                         <ClipboardList className="h-5 w-5 text-emerald-300" />
                         <h3 className="text-lg font-semibold">Change Requests</h3>
@@ -1192,223 +1186,307 @@ export default function AdminPage() {
         </div>
     );
 
+    const handleColumnFilterChange = (column: string, value: string) => {
+        setColumnFilters(prev => ({ ...prev, [column]: value }));
+    };
+
     // ─────────────────────────────────────────────────────────────────────────────
-    // RENDER: Job Monitor Tab Content
+    // RENDER: Logs Tab Content
     // ─────────────────────────────────────────────────────────────────────────────
-    const renderJobMonitorTab = () => {
-        const jobTypeOptions = ["ohlcv_load", "signal_process"];
-        const jobStatusOptions = ["running", "completed", "failed", "stopped"];
-        const jobTriggeredOptions = ["auto", "manual"];
+    const renderLogsTab = () => {
+        const renderColumnHeader = (label: string, key: string) => (
+            <th className="px-4 py-2 border-b border-slate-800 relative group">
+                <div className="flex items-center justify-between gap-1">
+                    <span>{label}</span>
+                    <div className="relative">
+                        <button
+                            onClick={() => setActiveFilterColumn(activeFilterColumn === key ? null : key)}
+                            className={cn(
+                                "p-1 rounded hover:bg-slate-800 transition-colors",
+                                columnFilters[key] ? "text-sky-400" : "text-slate-600 opacity-0 group-hover:opacity-100"
+                            )}
+                        >
+                            <Filter className="h-3 w-3" />
+                        </button>
+                        {activeFilterColumn === key && (
+                            <div className="absolute right-0 top-full mt-1 w-48 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-50 p-2">
+                                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-800">
+                                    <Search className="h-3 w-3 text-slate-500" />
+                                    <span className="text-xs font-medium text-slate-300">Filter {label}</span>
+                                </div>
+                                <Input
+                                    autoFocus
+                                    value={columnFilters[key] || ""}
+                                    onChange={(e) => handleColumnFilterChange(key, e.target.value)}
+                                    placeholder={`Search ${label}...`}
+                                    className="h-7 text-xs bg-slate-950 border-slate-800"
+                                />
+                                <div className="mt-2 flex justify-end">
+                                    <button
+                                        onClick={() => setActiveFilterColumn(null)}
+                                        className="text-[10px] text-sky-400 hover:text-sky-300"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </th>
+        );
 
         return (
-            <div className="space-y-6">
-                <section className="glass-panel rounded-2xl border border-slate-800 p-6 space-y-4">
-                    <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                            <AlertTriangle className="h-5 w-5 text-yellow-400" />
-                            <h3 className="text-lg font-semibold">Job Monitor</h3>
+            <div className="flex flex-col h-[calc(100vh-200px)] gap-4">
+                {/* Top Navigation for Logs */}
+                <div className="flex items-center gap-1 bg-slate-950/50 p-1 rounded-lg border border-slate-800 w-fit">
+                    <button
+                        onClick={() => setActiveLogTab("job_monitor")}
+                        className={cn(
+                            "px-4 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2",
+                            activeLogTab === "job_monitor"
+                                ? "bg-slate-800 text-white shadow-sm"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50"
+                        )}
+                    >
+                        <Activity className="h-3.5 w-3.5" />
+                        Job Monitor
+                    </button>
+                    <button
+                        onClick={() => setActiveLogTab("user_logs")}
+                        className={cn(
+                            "px-4 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2",
+                            activeLogTab === "user_logs"
+                                ? "bg-slate-800 text-white shadow-sm"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50"
+                        )}
+                    >
+                        <Users className="h-3.5 w-3.5" />
+                        User Logs
+                    </button>
+                    <button
+                        onClick={() => setActiveLogTab("system_logs")}
+                        className={cn(
+                            "px-4 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2",
+                            activeLogTab === "system_logs"
+                                ? "bg-slate-800 text-white shadow-sm"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/50"
+                        )}
+                    >
+                        <Database className="h-3.5 w-3.5" />
+                        System Logs
+                    </button>
+                </div>
+
+                {/* Main Content Area */}
+                <div className="flex-1 glass-panel rounded-xl border border-slate-800 p-4 flex flex-col min-w-0">
+                    {activeLogTab === "job_monitor" && (
+                        <>
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-2">
+                                    <Terminal className="h-4 w-4 text-slate-400" />
+                                    <h3 className="text-sm font-semibold text-slate-200">Job Execution Logs</h3>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 text-xs border-slate-700 hover:bg-slate-800 text-slate-300 gap-2"
+                                        onClick={() => setShowQueryModal(true)}
+                                    >
+                                        <Search className="h-3 w-3" />
+                                        Query
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="icon"
+                                        onClick={fetchJobs}
+                                        disabled={jobsLoading}
+                                        className="h-7 w-7 border-slate-700 hover:bg-slate-800 text-slate-300"
+                                    >
+                                        <RefreshCw className={cn("h-3 w-3", jobsLoading && "animate-spin")} />
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {/* Compact Job Table */}
+                            <div className="flex-1 overflow-auto rounded-lg border border-slate-800/70 bg-slate-950/40">
+                                <table className="w-full text-left border-collapse">
+                                    <thead className="bg-slate-900/50 text-[11px] uppercase text-slate-400 font-medium sticky top-0 z-10 backdrop-blur-sm">
+                                        <tr>
+                                            {renderColumnHeader("Job ID", "id")}
+                                            {renderColumnHeader("Type", "job_type")}
+                                            {renderColumnHeader("Trigger", "triggered_by")}
+                                            {renderColumnHeader("Status", "status")}
+                                            {renderColumnHeader("Started", "started_at")}
+                                            {renderColumnHeader("Finished", "finished_at")}
+                                            <th className="px-4 py-2 border-b border-slate-800 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-900">
+                                        {filteredJobs.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={7} className="px-4 py-8 text-center text-xs text-slate-500">
+                                                    {jobsLoading ? (
+                                                        <div className="flex flex-col items-center gap-2">
+                                                            <SimpleSpinner size={16} />
+                                                            <span className="text-[10px]">Loading jobs...</span>
+                                                        </div>
+                                                    ) : (
+                                                        "No jobs found."
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            filteredJobs.map((job) => (
+                                                <tr key={job.id} className="hover:bg-slate-900/40 transition-colors group">
+                                                    <td className="px-4 py-2 text-slate-300 text-[11px] font-mono">
+                                                        #{job.id}
+                                                    </td>
+                                                    <td className="px-4 py-2 text-[11px] text-slate-300">
+                                                        <div className="flex items-center gap-1.5">
+                                                            {job.job_type === "ohlcv_load" ? (
+                                                                <Database className="h-3 w-3 text-sky-400" />
+                                                            ) : (
+                                                                <Activity className="h-3 w-3 text-emerald-400" />
+                                                            )}
+                                                            <span>{jobMeta[job.job_type]?.title || job.job_type}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-2 text-[11px] text-slate-400">
+                                                        {job.triggered_by === "auto" ? "Auto" : "Manual"}
+                                                    </td>
+                                                    <td className="px-4 py-2 text-[11px]">
+                                                        <span
+                                                            className={cn(
+                                                                "px-1.5 py-0.5 rounded text-[10px] font-medium",
+                                                                job.status === "completed"
+                                                                    ? "text-emerald-400 bg-emerald-500/10"
+                                                                    : job.status === "running"
+                                                                        ? "text-sky-400 bg-sky-500/10 animate-pulse"
+                                                                        : job.status === "stopped"
+                                                                            ? "text-yellow-400 bg-yellow-500/10"
+                                                                            : "text-rose-400 bg-rose-500/10"
+                                                            )}
+                                                        >
+                                                            {job.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-2 text-[11px] text-slate-500 font-mono">
+                                                        {job.started_at ? new Date(job.started_at).toLocaleString() : "—"}
+                                                    </td>
+                                                    <td className="px-4 py-2 text-[11px] text-slate-500 font-mono">
+                                                        {job.finished_at ? new Date(job.finished_at).toLocaleString() : "—"}
+                                                    </td>
+                                                    <td className="px-4 py-2 text-[11px] text-right">
+                                                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            {job.status === "running" && (
+                                                                <>
+                                                                    <Button
+                                                                        variant="destructive"
+                                                                        size="icon"
+                                                                        className="h-6 w-6 bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 border border-rose-500/30"
+                                                                        onClick={() => handleStopJob(job.id)}
+                                                                        disabled={stoppingJobId === job.id || forcingJobId === job.id}
+                                                                        title="Stop Job"
+                                                                    >
+                                                                        {stoppingJobId === job.id ? <SimpleSpinner size={10} /> : <span className="text-[10px]">■</span>}
+                                                                    </Button>
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="icon"
+                                                                        className="h-6 w-6 border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                                                                        onClick={() => handleForceStopJob(job.id)}
+                                                                        disabled={forcingJobId === job.id}
+                                                                        title="Force Stop"
+                                                                    >
+                                                                        {forcingJobId === job.id ? <SimpleSpinner size={10} /> : <span className="font-bold text-[10px]">!</span>}
+                                                                    </Button>
+                                                                </>
+                                                            )}
+                                                            <Button
+                                                                variant="secondary"
+                                                                size="icon"
+                                                                className="h-6 w-6 bg-slate-800 hover:bg-slate-700 text-slate-300"
+                                                                onClick={() => handleViewLog(job.id)}
+                                                                title="View Logs"
+                                                            >
+                                                                <Terminal className="h-3 w-3" />
+                                                            </Button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
+                    )}
+                    {activeLogTab === "user_logs" && (
+                        <div className="flex items-center justify-center h-full text-slate-500 text-sm">
+                            User logs module coming soon.
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Button
-                                variant="ghost"
-                                className="text-xs text-slate-400 hover:text-white"
-                                onClick={handleResetJobFilters}
-                            >
-                                Reset Filters
-                            </Button>
-                            <Button
-                                variant="secondary"
-                                className="bg-slate-800 hover:bg-slate-700 text-xs flex items-center gap-2"
-                                onClick={fetchJobs}
-                                disabled={jobsLoading}
-                            >
-                                <RefreshCw className={cn("h-4 w-4", jobsLoading && "animate-spin")} />
-                                Refresh
-                            </Button>
-                            {jobsLoading && <SimpleSpinner size={16} />}
+                    )}
+                    {activeLogTab === "system_logs" && (
+                        <div className="flex items-center justify-center h-full text-slate-500 text-sm">
+                            System logs module coming soon.
+                        </div>
+                    )}
+                </div>
+
+                {/* Query Modal */}
+                {showQueryModal && (
+                    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6">
+                        <div className="w-full max-w-md bg-slate-950 border border-slate-800 rounded-xl p-6 shadow-2xl">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-slate-200">Query Logs</h3>
+                                <button className="text-slate-500 hover:text-white" onClick={() => setShowQueryModal(false)}>
+                                    <X className="h-5 w-5" />
+                                </button>
+                            </div>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs uppercase text-slate-500 mb-2 block">Date Range</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Input
+                                            type="date"
+                                            className="bg-slate-900/50 border-slate-800 text-xs"
+                                            value={queryForm.startDate}
+                                            onChange={e => setQueryForm({ ...queryForm, startDate: e.target.value })}
+                                        />
+                                        <Input
+                                            type="date"
+                                            className="bg-slate-900/50 border-slate-800 text-xs"
+                                            value={queryForm.endDate}
+                                            onChange={e => setQueryForm({ ...queryForm, endDate: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs uppercase text-slate-500 mb-2 block">Columns to Fetch</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {["Job ID", "Type", "Status", "Trigger", "Started At", "Finished At", "Duration", "Error Details"].map(col => (
+                                            <label key={col} className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer hover:text-white">
+                                                <input type="checkbox" className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500/20" />
+                                                {col}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="pt-4 flex justify-end gap-2">
+                                    <Button variant="ghost" onClick={() => setShowQueryModal(false)} className="text-slate-400 hover:text-white">Cancel</Button>
+                                    <Button className="bg-sky-600 hover:bg-sky-500 text-white" onClick={() => {
+                                        alert("Query executed! (Backend integration pending)");
+                                        setShowQueryModal(false);
+                                    }}>
+                                        Run Query
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div className="overflow-auto rounded-xl border border-slate-800">
-                        <table className="min-w-full text-sm divide-y divide-slate-800">
-                            <thead className="bg-slate-900/80 text-xs uppercase tracking-wide text-slate-500">
-                                <tr>
-                                    <th className="px-4 py-3 text-left">Job ID</th>
-                                    <th className="px-4 py-3 text-left">Type</th>
-                                    <th className="px-4 py-3 text-left">Triggered</th>
-                                    <th className="px-4 py-3 text-left">Status</th>
-                                    <th className="px-4 py-3 text-left">Date Range</th>
-                                    <th className="px-4 py-3 text-left">Started</th>
-                                    <th className="px-4 py-3 text-left">Finished</th>
-                                    <th className="px-4 py-3 text-left">Actions</th>
-                                </tr>
-                                <tr className="bg-slate-950/40 text-[11px] text-slate-400 font-normal uppercase tracking-normal">
-                                    <th className="px-4 py-2">
-                                        <Input
-                                            type="text"
-                                            value={jobFilters.job_id}
-                                            onChange={(e) => handleJobFilterChange("job_id", e.target.value)}
-                                            placeholder="Job ID"
-                                            className="h-7 bg-slate-900/80 border-slate-800 text-[11px]"
-                                        />
-                                    </th>
-                                    <th className="px-4 py-2">
-                                        <select
-                                            value={jobFilters.job_type}
-                                            onChange={(e) => handleJobFilterChange("job_type", e.target.value)}
-                                            className="h-7 w-full rounded border border-slate-800 bg-slate-900/80 px-2 text-[11px] text-slate-200"
-                                        >
-                                            <option value="">All</option>
-                                            {jobTypeOptions.map((type) => (
-                                                <option key={type} value={type}>
-                                                    {type}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </th>
-                                    <th className="px-4 py-2">
-                                        <select
-                                            value={jobFilters.triggered_by}
-                                            onChange={(e) => handleJobFilterChange("triggered_by", e.target.value)}
-                                            className="h-7 w-full rounded border border-slate-800 bg-slate-900/80 px-2 text-[11px] text-slate-200"
-                                        >
-                                            <option value="">All</option>
-                                            {jobTriggeredOptions.map((option) => (
-                                                <option key={option} value={option}>
-                                                    {option}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </th>
-                                    <th className="px-4 py-2">
-                                        <select
-                                            value={jobFilters.status}
-                                            onChange={(e) => handleJobFilterChange("status", e.target.value)}
-                                            className="h-7 w-full rounded border border-slate-800 bg-slate-900/80 px-2 text-[11px] text-slate-200"
-                                        >
-                                            <option value="">All</option>
-                                            {jobStatusOptions.map((statusOption) => (
-                                                <option key={statusOption} value={statusOption}>
-                                                    {statusOption}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </th>
-                                    <th className="px-4 py-2" colSpan={2}>
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="date"
-                                                value={jobFilters.start_date}
-                                                onChange={(e) => handleJobFilterChange("start_date", e.target.value)}
-                                                className="h-7 flex-1 rounded border border-slate-800 bg-slate-900/80 px-2 text-[11px] text-slate-200"
-                                                placeholder="Start Date"
-                                            />
-                                            <input
-                                                type="date"
-                                                value={jobFilters.end_date}
-                                                onChange={(e) => handleJobFilterChange("end_date", e.target.value)}
-                                                className="h-7 flex-1 rounded border border-slate-800 bg-slate-900/80 px-2 text-[11px] text-slate-200"
-                                                placeholder="End Date"
-                                            />
-                                        </div>
-                                    </th>
-                                    <th className="px-4 py-2 text-center text-[10px] text-slate-600">
-                                        <span>—</span>
-                                    </th>
-                                    <th className="px-4 py-2 text-center text-[10px] text-slate-600">—</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-900">
-                                {jobs.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={8} className="px-4 py-8 text-center text-xs text-slate-500">
-                                            {jobsLoading ? (
-                                                <div className="flex items-center justify-center gap-2">
-                                                    <SimpleSpinner size={16} />
-                                                    <span>Loading jobs...</span>
-                                                </div>
-                                            ) : (
-                                                "No jobs found matching the selected filters."
-                                            )}
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    jobs.map((job) => (
-                                        <tr key={job.id} className="hover:bg-slate-950/60">
-                                            <td className="px-4 py-3 text-slate-200 text-xs font-semibold">
-                                                #{job.id}
-                                            </td>
-                                            <td className="px-4 py-3 text-xs text-slate-300">
-                                                <div>
-                                                    <p className="font-semibold">{jobMeta[job.job_type].title}</p>
-                                                    <p className="text-[11px] text-slate-500">{job.job_type}</p>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-xs text-slate-300">
-                                        {job.triggered_by === "auto" ? "Auto" : "Manual"}
-                                    </td>
-                                    <td className="px-4 py-3 text-xs">
-                                        <span
-                                            className={cn(
-                                                "px-2 py-0.5 rounded-full text-[11px] font-semibold",
-                                                job.status === "completed"
-                                                    ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
-                                                    : job.status === "running"
-                                                        ? "bg-sky-500/15 text-sky-200 border border-sky-500/30"
-                                                        : job.status === "stopped"
-                                                            ? "bg-yellow-500/15 text-yellow-200 border border-yellow-500/30"
-                                                            : "bg-rose-500/15 text-rose-200 border border-rose-500/30"
-                                            )}
-                                        >
-                                            {job.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-xs text-slate-400">
-                                        {job.started_at ? new Date(job.started_at).toLocaleString() : "—"}
-                                    </td>
-                                    <td className="px-4 py-3 text-xs text-slate-400">
-                                        {job.finished_at ? new Date(job.finished_at).toLocaleString() : "—"}
-                                    </td>
-                                    <td className="px-4 py-3 text-xs">
-                                        <div className="flex items-center gap-2">
-                                            {job.status === "running" && (
-                                                <>
-                                                    <Button
-                                                        variant="destructive"
-                                                        size="icon"
-                                                        className="bg-rose-600 hover:bg-rose-500"
-                                                        onClick={() => handleStopJob(job.id)}
-                                                        disabled={stoppingJobId === job.id || forcingJobId === job.id}
-                                                    >
-                                                        {stoppingJobId === job.id ? <SimpleSpinner size={12} /> : "■"}
-                                                    </Button>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className="border-amber-500/60 text-amber-300 hover:bg-amber-500/10"
-                                                        onClick={() => handleForceStopJob(job.id)}
-                                                        disabled={forcingJobId === job.id}
-                                                    >
-                                                        {forcingJobId === job.id ? <SimpleSpinner size={12} /> : "!"}
-                                                    </Button>
-                                                </>
-                                            )}
-                                            <Button
-                                                variant="secondary"
-                                                size="icon"
-                                                className="bg-slate-900 hover:bg-slate-800"
-                                                onClick={() => handleViewLog(job.id)}
-                                            >
-                                                <Terminal className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                    </table>
-                </div>
-            </section>
+                )}
             </div>
         );
     };
@@ -1418,7 +1496,7 @@ export default function AdminPage() {
     // ─────────────────────────────────────────────────────────────────────────────
     const renderConnectionsTab = () => (
         <div className="space-y-6">
-            <section className="glass-panel rounded-2xl border border-slate-800 p-6 space-y-4">
+            <section className="glass-panel rounded-xl border border-slate-800 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <Link2 className="h-5 w-5 text-cyan-400" />
@@ -1482,7 +1560,7 @@ export default function AdminPage() {
     // ─────────────────────────────────────────────────────────────────────────────
     const renderFeedbackTab = () => (
         <div className="space-y-6">
-            <section className="glass-panel rounded-2xl border border-slate-800 p-6 space-y-4">
+            <section className="glass-panel rounded-xl border border-slate-800 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <MessageSquarePlus className="h-5 w-5 text-violet-400" />
@@ -1542,22 +1620,22 @@ export default function AdminPage() {
     );
 
     return (
-        <div className="flex h-full bg-slate-900 text-white overflow-hidden">
+        <div className="flex h-screen bg-slate-900 text-white overflow-hidden">
             {/* Left Navigation Panel */}
-            <aside className="w-64 flex-shrink-0 border-r border-slate-800 bg-slate-950/30 flex flex-col">
-                <div className="p-6 border-b border-slate-800/50">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-red-500/10 rounded-lg border border-red-500/30">
-                            <Shield className="h-6 w-6 text-red-400" />
+            <aside className="w-52 flex-shrink-0 border-r border-slate-800 bg-slate-950/30 flex flex-col h-full">
+                <div className="p-3 border-b border-slate-800/50 flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-red-500/10 rounded-lg border border-red-500/30">
+                            <Shield className="h-5 w-5 text-red-400" />
                         </div>
                         <div>
-                            <h1 className="text-lg font-bold leading-none">Admin</h1>
-                            <p className="text-[10px] uppercase tracking-wider text-slate-500 mt-1">Console</p>
+                            <h1 className="text-base font-bold leading-none">Admin</h1>
+                            <p className="text-[9px] uppercase tracking-wider text-slate-500 mt-0.5">Console</p>
                         </div>
                     </div>
                 </div>
 
-                <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+                <nav className="flex-1 p-2 space-y-1 overflow-y-auto min-h-0">
                     {adminTabs.map((tab) => {
                         const Icon = tab.icon;
                         return (
@@ -1565,39 +1643,32 @@ export default function AdminPage() {
                                 key={tab.key}
                                 onClick={() => setActiveTab(tab.key)}
                                 className={cn(
-                                    "w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-all",
+                                    "w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-all",
                                     activeTab === tab.key
                                         ? "bg-sky-500/10 text-sky-100 border border-sky-500/20"
                                         : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 border border-transparent"
                                 )}
                             >
-                                <Icon className={cn("h-4 w-4 flex-shrink-0", activeTab === tab.key ? "text-sky-400" : "text-slate-500")} />
+                                <Icon className={cn("h-3.5 w-3.5 flex-shrink-0", activeTab === tab.key ? "text-sky-400" : "text-slate-500")} />
                                 <div>
-                                    <p className="font-medium text-sm">{tab.label}</p>
+                                    <p className="font-medium text-xs">{tab.label}</p>
                                 </div>
                             </button>
                         );
                     })}
                 </nav>
-
-                <div className="p-4 border-t border-slate-800/50">
-                    <Button variant="outline" className="w-full justify-start gap-2 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800" onClick={fetchJobs}>
-                        <RefreshCw className="h-4 w-4" />
-                        Refresh Data
-                    </Button>
-                </div>
             </aside>
 
             {/* Content Area */}
             <main className="flex-1 overflow-y-auto min-w-0 bg-slate-900">
-                <div className="p-8 max-w-7xl">
-                    <div className="mb-6">
-                        <h2 className="text-2xl font-bold">{adminTabs.find(t => t.key === activeTab)?.label}</h2>
-                        <p className="text-slate-400 text-sm">{adminTabs.find(t => t.key === activeTab)?.description}</p>
+                <div className="p-4 max-w-7xl">
+                    <div className="mb-3">
+                        <h2 className="text-xl font-bold">{adminTabs.find(t => t.key === activeTab)?.label}</h2>
+                        <p className="text-slate-400 text-xs">{adminTabs.find(t => t.key === activeTab)?.description}</p>
                     </div>
 
                     {activeTab === "processors" && renderProcessorsTab()}
-                    {activeTab === "job_monitor" && renderJobMonitorTab()}
+                    {activeTab === "logs" && renderLogsTab()}
                     {activeTab === "accounts" && renderAccountsTab()}
                     {activeTab === "feedback" && renderFeedbackTab()}
                     {activeTab === "connections" && renderConnectionsTab()}
@@ -1771,7 +1842,7 @@ export default function AdminPage() {
 
             {/* Schedule Modal */}
             {showScheduleModal && (
-                <div 
+                <div
                     className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6"
                     onClick={(e) => {
                         if (e.target === e.currentTarget) {
@@ -1952,10 +2023,10 @@ export default function AdminPage() {
                                                 <button
                                                     key={preset.hours}
                                                     type="button"
-                                                    onClick={() => setScheduleForm({ 
-                                                        ...scheduleForm, 
-                                                        interval_hours: preset.hours, 
-                                                        interval_minutes: 0 
+                                                    onClick={() => setScheduleForm({
+                                                        ...scheduleForm,
+                                                        interval_hours: preset.hours,
+                                                        interval_minutes: 0
                                                     })}
                                                     className={cn(
                                                         "px-3 py-2 rounded-md text-xs font-medium border transition-all",
@@ -1969,7 +2040,7 @@ export default function AdminPage() {
                                             ))}
                                         </div>
                                     </div>
-                                    
+
                                     <div className="border-t border-slate-800 pt-4">
                                         <label className="text-xs uppercase text-slate-500 mb-2 block">Custom Hours</label>
                                         <Input
@@ -1981,10 +2052,10 @@ export default function AdminPage() {
                                             onChange={(e) => {
                                                 const val = parseInt(e.target.value) || 0;
                                                 if (val >= 0 && val <= 8760) {
-                                                    setScheduleForm({ 
-                                                        ...scheduleForm, 
-                                                        interval_hours: val, 
-                                                        interval_minutes: val > 0 ? 0 : scheduleForm.interval_minutes 
+                                                    setScheduleForm({
+                                                        ...scheduleForm,
+                                                        interval_hours: val,
+                                                        interval_minutes: val > 0 ? 0 : scheduleForm.interval_minutes
                                                     });
                                                 }
                                             }}
@@ -1992,9 +2063,9 @@ export default function AdminPage() {
                                         />
                                         <p className="text-xs text-slate-500 mt-1">Maximum: 8760 hours (1 year)</p>
                                     </div>
-                                    
+
                                     <div className="text-center text-slate-400 text-xs font-medium">OR</div>
-                                    
+
                                     <div>
                                         <label className="text-xs uppercase text-slate-500 mb-2 block">Custom Minutes</label>
                                         <Input
@@ -2006,10 +2077,10 @@ export default function AdminPage() {
                                             onChange={(e) => {
                                                 const val = parseInt(e.target.value) || 0;
                                                 if (val >= 1 && val <= 59) {
-                                                    setScheduleForm({ 
-                                                        ...scheduleForm, 
-                                                        interval_minutes: val, 
-                                                        interval_hours: 0 
+                                                    setScheduleForm({
+                                                        ...scheduleForm,
+                                                        interval_minutes: val,
+                                                        interval_hours: 0
                                                     });
                                                 }
                                             }}
@@ -2017,7 +2088,7 @@ export default function AdminPage() {
                                         />
                                         <p className="text-xs text-slate-500 mt-1">Note: For intervals ≥ 60 minutes, use hours instead</p>
                                     </div>
-                                    
+
                                     {(scheduleForm.interval_hours > 0 || scheduleForm.interval_minutes > 0) && (
                                         <div className="rounded-md bg-amber-500/10 border border-amber-500/30 p-3">
                                             <div className="flex items-center gap-2">
@@ -2025,7 +2096,7 @@ export default function AdminPage() {
                                                 <div className="text-sm">
                                                     <span className="text-amber-200 font-medium">
                                                         Schedule will run every{" "}
-                                                        {scheduleForm.interval_hours > 0 
+                                                        {scheduleForm.interval_hours > 0
                                                             ? `${scheduleForm.interval_hours} hour${scheduleForm.interval_hours > 1 ? "s" : ""}`
                                                             : `${scheduleForm.interval_minutes} minute${scheduleForm.interval_minutes > 1 ? "s" : ""}`
                                                         }
