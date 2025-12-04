@@ -15,3 +15,6 @@ pytest
 sqlalchemy
 yfinance
 apscheduler
+# Note: TA-Lib requires the C library to be installed first
+# On Windows with Anaconda: conda install -c conda-forge ta-lib
+# Or use: pip install TA-Lib (after installing TA-Lib C library)
